@@ -1,4 +1,4 @@
-package com.Nagwa.task
+package com.nagwa.task
 
 import org.junit.Test
 

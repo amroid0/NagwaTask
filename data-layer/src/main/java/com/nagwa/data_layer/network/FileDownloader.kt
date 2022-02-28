@@ -1,52 +1,55 @@
 package com.nagwa.data_layer.network
 
 import io.reactivex.Observable
+import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import java.io.File
-import java.net.HttpURLConnection
-import java.util.concurrent.TimeUnit
+import java.io.IOException
+import javax.inject.Inject
 
-class FileDownloader(okHttpClient: OkHttpClient) {
+class FileDownloader @Inject constructor() {
 
     companion object {
-        private const val BUFFER_LENGTH_BYTES = 1024 * 8
+        private const val COMPLETE = -1L
+        private const val INFINITE = -1L
     }
 
-    private var okHttpClient: OkHttpClient
 
-    init {
-        val okHttpBuilder = okHttpClient.newBuilder()
-        this.okHttpClient = okHttpBuilder.build()
-    }
-
-    fun download(url: String, file: File): Observable<Int> {
+    fun download(url: String): Observable<Int> {
         return Observable.create<Int> { emitter ->
-            val request = Request.Builder().url(url).build()
-            val response = okHttpClient.newCall(request).execute()
-            val body = response.body
-            val responseCode = response.code
-            if (responseCode >= HttpURLConnection.HTTP_OK &&
-                responseCode < HttpURLConnection.HTTP_MULT_CHOICE &&
-                body != null) {
-                val length = body.contentLength()
-                body.byteStream().apply {
-                    file.outputStream().use { fileOut ->
-                        var bytesCopied = 0
-                        val buffer = ByteArray(BUFFER_LENGTH_BYTES)
-                        var bytes = read(buffer)
-                        while (bytes >= 0) {
-                            fileOut.write(buffer, 0, bytes)
-                            bytesCopied += bytes
-                            bytes = read(buffer)
-                            emitter.onNext(((bytesCopied * 100)/length).toInt())
-                        }
+            try {
+                val request = Request.Builder()
+                    .url(url)
+                    .build()
+
+                val client = OkHttpClient.Builder()
+                    .addNetworkInterceptor { chain: Interceptor.Chain ->
+                        val originalResponse = chain.proceed(chain.request())
+                        originalResponse.newBuilder()
+                            .body(originalResponse.body?.let { responseBody ->
+                                ProgressResponseBody(responseBody) { contentLength, progress ->
+                                    if (progress == COMPLETE) {
+                                        emitter.onComplete()
+                                    } else {
+                                        if (contentLength == INFINITE) {
+                                            emitter.onNext(INFINITE.toInt())
+                                        } else {
+                                            emitter.onNext(progress.toInt())
+                                        }
+                                    }
+                                }
+                            })
+                            .build()
                     }
-                    emitter.onComplete()
-                }
-            } else {
-                throw IllegalArgumentException("Error occurred when do http get $url")
+                    .build()
+                val response = client.newCall(request).execute()
+                if (!response.isSuccessful) throw IOException("code $response")
+
+                response.body?.string()
+            } catch (exception: Exception) {
+                emitter.onError(exception)
             }
         }
+
     }
 }

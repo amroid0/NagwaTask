@@ -4,5 +4,6 @@ data class FileEntity(
     val id: String,
     val type: String,
     val name: String,
-    val url: String
+    val url: String,
+    var state: FileState=FileState.Idle
 )

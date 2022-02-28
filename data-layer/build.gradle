@@ -33,6 +33,7 @@ android {
 }
 
 dependencies {
+
     implementation project(':domain-layer')
     //dagger
     implementation "com.google.dagger:dagger:$daggerVersion"
